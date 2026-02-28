@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบจัดการสต๊อกสินค้า</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    .animate-fadeIn { animation: fadeIn 0.2s ease-out; } 
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slideInRight { animation: slideInRight 0.3s ease-out; }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
+    .hidden { display: none !important; }
+    #reader button { background-color: #2563eb; color: white; padding: 6px 12px; border-radius: 4px; margin-top: 10px; cursor: pointer; }
+    #reader button:hover { background-color: #1d4ed8; }
+    /* สไตล์สำหรับ Custom Autocomplete */
+    .ac-container { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 0 0 0.375rem 0.375rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); max-height: 12rem; overflow-y: auto; z-index: 50; }
+    .ac-item { padding: 0.5rem 0.75rem; font-size: 0.875rem; color: #374151; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
+    .ac-item:hover { background-color: #dbeafe; }
+  </style>
+</head>
+<body class="bg-gray-50 pb-10 overflow-x-hidden text-gray-800 font-sans">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Offline Banner -->
+  <div id="offline-banner" class="hidden bg-red-600 text-white text-center py-1.5 text-xs font-bold w-full shadow-md z-50 relative flex items-center justify-center gap-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+    คุณออฟไลน์อยู่ (ข้อมูลจะถูกบันทึกไว้ในเครื่องก่อน)
+  </div>
+
+  <header class="bg-blue-800 text-white p-4 shadow-md sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+        <h1 class="text-2xl font-bold">ระบบสต๊อกสินค้า</h1>
+      </div>
+      <div id="sync-indicator" class="hidden items-center text-xs font-medium text-blue-200 animate-pulse">
+        <svg class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        ซิงค์ข้อมูล...
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto mt-6 px-4" id="main-content" style="display:none;">
+    <!-- Tabs Menu -->
+    <div class="flex bg-white rounded-t-lg shadow-sm overflow-x-auto mb-6 border-b" id="tabs-menu">
+      <button onclick="switchTab('receive')" id="tab-btn-receive" class="relative flex-1 min-w-[100px] py-4 text-center font-medium transition-colors">📥 รับเข้า</button>
+      <button onclick="switchTab('dispatch')" id="tab-btn-dispatch" class="relative flex-1 min-w-[100px] py-4 text-center font-medium transition-colors">📤 เบิกออก</button>
+      <button onclick="switchTab('summary')" id="tab-btn-summary" class="relative flex-1 min-w-[100px] py-4 text-center font-medium transition-colors">📦 ของในคลัง</button>
+      <button onclick="switchTab('shops')" id="tab-btn-shops" class="relative flex-1 min-w-[100px] py-4 text-center font-medium transition-colors">🏪 ร้านค้า</button>
+      <button onclick="switchTab('history')" id="tab-btn-history" class="relative flex-1 min-w-[100px] py-4 text-center font-medium transition-colors">🕒 ประวัติ</button>
+      <button onclick="switchTab('alerts')" id="tab-btn-alerts" class="relative flex-1 min-w-[120px] py-4 text-center font-medium transition-colors">
+        ⚠️ แจ้งเตือน
+        <span id="alert-badge" class="hidden absolute top-2 right-2 bg-red-600 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">0</span>
+      </button>
+    </div>
+
+    <div class="bg-white p-6 rounded-b-lg shadow-md border border-gray-100 min-h-[500px]">
+      
+      <!-- TAB: รับเข้า -->
+      <div id="tab-receive" class="hidden space-y-5 animate-fadeIn max-w-2xl mx-auto">
+        <h2 class="text-xl font-bold text-gray-800 border-l-4 border-blue-500 pl-3">บันทึกรับสินค้าเข้า</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div><label class="block text-sm font-medium text-gray-700 mb-1">วันที่รับสินค้า</label><input type="date" id="rec-date" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสอะไหล่ (Parts)</label>
+            <div class="flex gap-2">
+              <div class="relative flex-1">
+                <input type="text" id="rec-parts" placeholder="รหัสอะไหล่" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" autocomplete="off" onfocus="showAC('rec-parts', state.existingPartsCodes)" oninput="handlePartsChange('rec'); showAC('rec-parts', state.existingPartsCodes)" />
+              </div>
+              <button onclick="openScanner('rec')" class="bg-blue-100 text-blue-700 p-2.5 rounded-md hover:bg-blue-200">📷</button>
+            </div>
+          </div>
+          
+          <div class="relative">
+            <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อสินค้า <span class="text-red-500">*</span></label>
+            <input type="text" id="rec-product" placeholder="พิมพ์ชื่อสินค้า" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" autocomplete="off" onfocus="showAC('rec-product', state.existingProducts)" oninput="handleProductChange('rec'); showAC('rec-product', state.existingProducts)" />
+          </div>
+          
+          <div><label class="block text-sm font-medium text-gray-700 mb-1">จำนวน <span class="text-red-500">*</span></label><input type="number" min="0" step="0.01" id="rec-qty" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          <div><label class="block text-sm font-medium text-gray-700 mb-1">รวมเป็นเงิน (บาท)</label><input type="number" min="0" step="0.01" id="rec-price" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          
+          <div class="relative">
+            <label class="block text-sm font-medium text-gray-700 mb-1">รับจากร้านค้า / ผู้จำหน่าย <span class="text-red-500">*</span></label>
+            <input type="text" id="rec-shop" placeholder="พิมพ์ชื่อร้านค้า" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none" autocomplete="off" onfocus="showAC('rec-shop', state.existingShops)" oninput="showAC('rec-shop', state.existingShops)" />
+          </div>
+        </div>
+        <button id="btn-save-rec" onclick="handleSubmit('receive')" class="w-full mt-6 text-white font-bold py-3.5 px-4 rounded-md shadow bg-blue-600 hover:bg-blue-700">บันทึกรับเข้าสต๊อก</button>
+      </div>
+
+      <!-- TAB: เบิกออก -->
+      <div id="tab-dispatch" class="hidden space-y-5 animate-fadeIn max-w-2xl mx-auto">
+        <h2 class="text-xl font-bold text-gray-800 border-l-4 border-orange-500 pl-3">บันทึกเบิกสินค้าออก</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div><label class="block text-sm font-medium text-gray-700 mb-1">วันที่เบิกสินค้า</label><input type="date" id="dis-date" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 outline-none" onchange="checkDispatchWarning()" /></div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสอะไหล่ (Parts)</label>
+            <div class="flex gap-2">
+              <div class="relative flex-1">
+                <input type="text" id="dis-parts" placeholder="พิมพ์ หรือ สแกน" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 outline-none" autocomplete="off" onfocus="showAC('dis-parts', state.existingPartsCodes)" oninput="handlePartsChange('dis'); showAC('dis-parts', state.existingPartsCodes)" />
+              </div>
+              <button onclick="openScanner('dis')" class="bg-orange-100 text-orange-700 p-2.5 rounded-md hover:bg-orange-200">📷</button>
+            </div>
+          </div>
+          
+          <div class="relative">
+            <label class="block text-sm font-medium text-gray-700 mb-1">เลือกสินค้าที่จะเบิก <span class="text-red-500">*</span></label>
+            <input type="text" id="dis-product" placeholder="พิมพ์เพื่อค้นหา" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 outline-none" autocomplete="off" onfocus="showAC('dis-product', state.existingProducts)" oninput="handleProductChange('dis'); showAC('dis-product', state.existingProducts)" />
+            <p id="dis-stock-warning" class="text-xs font-bold mt-1 hidden"></p>
+          </div>
+          
+          <div><label class="block text-sm font-medium text-gray-700 mb-1">จำนวนที่เบิก <span class="text-red-500">*</span></label><input type="number" min="0" step="0.01" id="dis-qty" class="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 outline-none" /></div>
+          
+          <div class="relative">
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสรถ / หน่วยงาน <span class="text-red-500">*</span></label>
+            <input type="text" id="dis-vehicle" placeholder="พิมพ์รหัสรถ หรือ หน่วยงาน" class="w-full p-2.5 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-orange-500" autocomplete="off" onfocus="showAC('dis-vehicle', state.existingVehicles)" oninput="checkDispatchWarning(); showAC('dis-vehicle', state.existingVehicles)" />
+            <div id="dis-lifespan-warning" class="mt-2 text-sm text-red-600 bg-red-100 p-2.5 rounded border border-red-200 hidden"></div>
+          </div>
+        </div>
+        <button id="btn-save-dis" onclick="handleSubmit('dispatch')" class="w-full mt-6 text-white font-bold py-3.5 px-4 rounded-md shadow bg-orange-600 hover:bg-orange-700">บันทึกเบิกออก</button>
+      </div>
+
+      <!-- TAB: ของในคลัง -->
+      <div id="tab-summary" class="hidden space-y-4 animate-fadeIn">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <h2 class="text-xl font-bold text-gray-800 border-l-4 border-green-500 pl-3">รายการของในคลัง</h2>
+          <div class="flex gap-2 w-full sm:w-auto">
+            <input type="text" id="summary-search" placeholder="🔍 ค้นหาชื่อ หรือ สแกนพาร์ท..." oninput="renderSummary()" class="flex-1 p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-green-500 w-full sm:w-64" />
+            <button onclick="openScanner('summary')" class="bg-green-100 text-green-700 px-3 py-2 rounded-md hover:bg-green-200" title="สแกนเพื่อค้นหา">📷</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-100">
+              <tr><th class="px-6 py-3.5 text-left text-xs font-bold text-gray-600 uppercase">ชื่อสินค้า (และรหัสอะไหล่)</th><th class="px-6 py-3.5 text-right text-sm font-bold text-blue-800 uppercase w-32">คงเหลือ</th></tr>
+            </thead>
+            <tbody id="summary-tbody" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: ร้านค้า -->
+      <div id="tab-shops" class="hidden space-y-6 animate-fadeIn">
+        <h2 class="text-xl font-bold text-gray-800 border-l-4 border-indigo-500 pl-3 mb-2">ประวัติสั่งซื้อรายร้านค้า</h2>
+        <select id="shops-select" onchange="renderShops()" class="w-full md:w-1/2 p-2.5 border rounded-md text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="">-- เลือกร้านค้า --</option>
+        </select>
+        <div id="shops-table-container" class="overflow-x-auto border border-gray-200 rounded-lg mt-4 shadow-sm hidden">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-100">
+              <tr><th class="px-4 py-3 text-left text-xs font-bold text-gray-600">วันที่</th><th class="px-4 py-3 text-left text-xs font-bold text-gray-600">สินค้า</th><th class="px-4 py-3 text-right text-xs font-bold text-gray-600">จำนวน</th><th class="px-4 py-3 text-right text-xs font-bold text-gray-600">รวมเป็นเงิน</th></tr>
+            </thead>
+            <tbody id="shops-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+            <tfoot class="bg-indigo-50 border-t border-indigo-100">
+              <tr><td colspan="4" id="shops-total" class="px-4 py-3 text-right text-sm font-bold text-indigo-900"></td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: ประวัติ -->
+      <div id="tab-history" class="hidden space-y-6 animate-fadeIn">
+        <h2 class="text-xl font-bold text-gray-800 border-l-4 border-purple-500 pl-3 mb-2">ประวัติการทำรายการ</h2>
+        <div class="bg-purple-50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+          <div><label class="block text-xs font-bold text-purple-800 mb-1">ประเภท</label><select id="hist-type" onchange="renderHistory()" class="w-full p-2 border rounded text-sm outline-none"><option value="all">ทั้งหมด</option><option value="รับเข้า">รับเข้า</option><option value="เบิกออก">เบิกออก</option></select></div>
+          <div><label class="block text-xs font-bold text-purple-800 mb-1">อะไหล่</label><select id="hist-product" onchange="renderHistory()" class="w-full p-2 border rounded text-sm outline-none bg-white"><option value="">-- ทุกรายการ --</option></select></div>
+          <div><label class="block text-xs font-bold text-purple-800 mb-1">รหัสรถ/หน่วยงาน</label><select id="hist-vehicle" onchange="renderHistory()" class="w-full p-2 border rounded text-sm outline-none"><option value="">-- ทุกคัน/ทุกหน่วยงาน --</option></select></div>
+          <div><label class="block text-xs font-bold text-purple-800 mb-1">ตั้งแต่วันที่</label><input type="date" id="hist-start" onchange="renderHistory()" class="w-full p-2 border rounded text-sm outline-none" /></div>
+          <div><label class="block text-xs font-bold text-purple-800 mb-1">ถึงวันที่</label><input type="date" id="hist-end" onchange="renderHistory()" class="w-full p-2 border rounded text-sm outline-none" /></div>
+        </div>
+        <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-100">
+              <tr><th class="px-3 py-3 text-left text-xs font-bold text-gray-600">วันที่</th><th class="px-3 py-3 text-left text-xs font-bold text-gray-600">ประเภท</th><th class="px-3 py-3 text-left text-xs font-bold text-gray-600">สินค้า</th><th class="px-3 py-3 text-right text-xs font-bold text-gray-600">จำนวน</th><th class="px-3 py-3 text-left text-xs font-bold text-gray-600">รหัสรถ/ร้านค้า</th><th class="px-3 py-3 text-left text-xs font-bold text-gray-600">สถานะ</th><th class="px-3 py-3 text-center text-xs font-bold text-gray-600">จัดการ</th></tr>
+            </thead>
+            <tbody id="history-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB: แจ้งเตือน -->
+      <div id="tab-alerts" class="hidden space-y-8 animate-fadeIn">
+        <div>
+          <h2 class="text-xl font-bold text-orange-600 border-l-4 border-orange-500 pl-3 mb-4">แจ้งเตือนอะไหล่ใกล้หมดสต๊อก</h2>
+          <div class="overflow-x-auto border border-orange-200 rounded-lg shadow-sm">
+            <table class="min-w-full divide-y divide-orange-200">
+              <thead class="bg-orange-50">
+                <tr><th class="px-4 py-3 text-left text-xs font-bold text-orange-800">รหัสอะไหล่(หลัก)</th><th class="px-4 py-3 text-left text-xs font-bold text-orange-800">ชื่อสินค้า</th><th class="px-4 py-3 text-center text-xs font-bold text-orange-800">จุดแจ้งเตือน (ชิ้น)</th><th class="px-4 py-3 text-right text-xs font-bold text-orange-800">คงเหลือ</th></tr>
+              </thead>
+              <tbody id="alerts-lowstock-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-red-800 border-l-4 border-red-600 pl-3 mb-4">รายการเบิกผิดปกติ (รอตรวจสอบ)</h2>
+          <div class="overflow-x-auto border border-red-200 rounded-lg shadow-sm">
+            <table class="min-w-full divide-y divide-red-200">
+              <thead class="bg-red-50">
+                <tr><th class="px-4 py-3 text-left text-xs font-bold text-red-800">วันที่เบิก</th><th class="px-4 py-3 text-left text-xs font-bold text-red-800">รหัสรถ/หน่วยงาน</th><th class="px-4 py-3 text-left text-xs font-bold text-red-800">ชื่อสินค้า</th><th class="px-4 py-3 text-center text-xs font-bold text-red-800">รายละเอียด</th><th class="px-4 py-3 text-right text-xs font-bold text-red-800">จัดการ</th></tr>
+              </thead>
+              <tbody id="alerts-dispatch-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <svg class="animate-spin h-10 w-10 text-blue-600 mb-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+    <div class="text-xl font-bold text-gray-700">กำลังเชื่อมต่อฐานข้อมูล...</div>
+  </div>
+
+  <!-- --- MODALS --- -->
+
+  <!-- Edit Modal -->
+  <div id="modal-edit" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 animate-fadeIn">
+      <h3 class="text-xl font-bold text-blue-800 mb-4 border-b pb-2" id="edit-title">✏️ แก้ไขรายการ</h3>
+      <div class="grid grid-cols-2 gap-4">
+        <div><label class="block text-xs font-bold text-gray-700 mb-1">วันที่</label><input type="date" id="edit-date" class="w-full p-2 border rounded text-sm"/></div>
+        
+        <div id="edit-wrap-parts" class="relative"></div>
+        <div id="edit-wrap-product" class="col-span-2 relative"></div>
+        
+        <div><label class="block text-xs font-bold text-gray-700 mb-1">จำนวน</label><input type="number" id="edit-qty" class="w-full p-2 border rounded text-sm"/></div>
+        <div id="edit-wrap-extra" class="col-span-2 grid grid-cols-2 gap-4"></div>
+      </div>
+      <div class="mt-6 flex justify-end gap-2">
+        <button onclick="closeModal('modal-edit')" class="px-4 py-2 border rounded text-gray-600 bg-gray-50 hover:bg-gray-100 font-bold">ยกเลิก</button>
+        <button id="btn-edit-save" onclick="executeEdit()" class="px-4 py-2 text-white rounded font-bold transition-colors bg-blue-600 hover:bg-blue-700">บันทึกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="modal-detail" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
+    <div class="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col animate-fadeIn">
+      <div class="p-5 border-b flex justify-between items-start bg-gray-50 rounded-t-lg">
+        <div class="w-full" id="detail-header-normal">
+          <div class="flex items-center gap-3">
+            <h3 class="text-xl font-bold text-gray-800" id="detail-title"></h3>
+            <button onclick="openGlobalRename()" class="text-blue-500 hover:text-blue-700 text-sm bg-blue-50 px-2 py-1 rounded border border-blue-200">✏️ แก้ไขชื่อและพาร์ทอะไหล่</button>
+          </div>
+          <p class="text-sm text-blue-600 font-semibold mt-1" id="detail-balance"></p>
+        </div>
+        
+        <!-- ส่วนแก้ไขชื่อและพาร์ทแบบใหม่ แยกช่อง -->
+        <div class="w-full pr-8 hidden" id="detail-header-rename">
+          <div class="bg-blue-50 p-4 rounded border border-blue-200 mb-2">
+            <p class="text-xs font-bold text-blue-800 mb-3">เปลี่ยนชื่อสินค้าและรหัสอะไหล่ (ระบบจะอัปเดตประวัติเก่าให้ตรงกับพาร์ทใหม่ทั้งหมด)</p>
+            <div class="flex flex-col gap-3">
+              <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <label class="text-sm font-bold text-gray-700 sm:w-20">ชื่อสินค้า:</label>
+                <input type="text" id="rename-name" placeholder="พิมพ์ชื่อสินค้าใหม่" class="p-2 border rounded text-sm flex-1 w-full" />
+              </div>
+              
+              <!-- กล่องใส่ช่องพาร์ทอะไหล่แบบไดนามิก -->
+              <div id="rename-parts-container" class="flex flex-col gap-2"></div>
+              
+              <div class="flex justify-end gap-2 mt-2 border-t border-blue-100 pt-3">
+                <button onclick="closeGlobalRename()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded text-sm font-bold">ยกเลิก</button>
+                <button id="btn-rename-save" onclick="executeGlobalRename()" class="text-white px-4 py-2 rounded text-sm font-bold bg-blue-600 hover:bg-blue-700">บันทึกการเปลี่ยนแปลง</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-detail')" class="text-gray-400 hover:text-red-500 ml-4 text-xl">❌</button>
+      </div>
+
+      <!-- แถบตั้งค่าแบบกะทัดรัด (Slim Toolbar) -->
+      <div class="px-5 py-2.5 border-b bg-yellow-50 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div class="flex flex-wrap items-center gap-4 w-full sm:w-auto">
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-bold text-yellow-800">อายุใช้งาน (เดือน):</label>
+            <input type="number" id="detail-lifespan" placeholder="-" class="w-16 p-1 text-sm border border-yellow-300 rounded outline-none focus:ring-1 focus:ring-yellow-500 text-center shadow-inner" />
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-bold text-orange-800">เตือนสต๊อก <span class="hidden sm:inline">เมื่อน้อยกว่า</span>:</label>
+            <input type="number" id="detail-minstock" placeholder="-" class="w-16 p-1 text-sm border border-orange-300 rounded outline-none focus:ring-1 focus:ring-orange-500 text-center shadow-inner" />
+          </div>
+        </div>
+        <button id="btn-save-settings" onclick="saveSettings()" class="w-full sm:w-auto text-white text-xs font-bold py-1.5 px-5 rounded transition-colors bg-yellow-600 hover:bg-yellow-700 shadow-sm">บันทึกการตั้งค่า</button>
+      </div>
+      
+      <div class="px-6 py-3 bg-gray-50 border-b flex items-center gap-2">
+        <label class="text-sm font-bold text-gray-700">แสดงเฉพาะ:</label>
+        <select id="detail-filter" onchange="renderDetailTable()" class="p-1 border border-gray-300 rounded text-sm outline-none"><option value="all">ทั้งหมด</option><option value="รับเข้า">รับเข้า</option><option value="เบิกออก">เบิกออก</option></select>
+      </div>
+      <div class="p-0 overflow-y-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-white sticky top-0 shadow-sm"><tr><th class="px-4 py-3 text-left text-xs font-bold text-gray-500">วันที่</th><th class="px-4 py-3 text-left text-xs font-bold text-gray-500">ประเภท</th><th class="px-4 py-3 text-right text-xs font-bold text-gray-500">จำนวน</th><th class="px-4 py-3 text-left text-xs font-bold text-gray-500">รถ/หน่วยงาน/ร้าน</th><th class="px-4 py-3 text-left text-xs font-bold text-gray-500">สถานะ</th><th class="px-4 py-3 text-center text-xs font-bold text-gray-500">จัดการ</th></tr></thead>
+          <tbody id="detail-tbody" class="bg-white divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+      <div class="p-3 border-t bg-gray-50 text-right"><button onclick="closeModal('modal-detail')" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 font-bold rounded">ปิด</button></div>
+    </div>
+  </div>
+
+  <!-- Scanner Modal -->
+  <div id="modal-scanner" class="hidden fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-[100] p-4">
+    <div class="bg-white rounded-lg shadow-2xl w-full max-w-md p-6 relative">
+      <button onclick="closeScanner()" class="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl z-10">&times;</button>
+      <h3 class="text-lg font-bold mb-4 text-center text-gray-800">สแกนบาร์โค้ด / QR Code</h3>
+      <div id="reader" class="w-full overflow-hidden rounded-md border border-gray-300 bg-white min-h-[250px] text-gray-800"></div>
+      <p class="text-xs text-gray-500 text-center mt-4">หากกล้องไม่เปิด กรุณาตรวจสอบว่าคุณใช้งานผ่าน HTTPS หรือ Localhost</p>
+    </div>
+  </div>
+
+  <!-- Prompt Modal (บันทึกการตรวจสอบ) -->
+  <div id="modal-prompt" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+      <h3 class="text-xl font-bold text-green-700 mb-4">✅ บันทึกการตรวจสอบ</h3>
+      <div class="space-y-4">
+        <div><label class="block text-sm font-bold mb-1">เหตุผล</label><textarea id="prompt-reason" class="w-full p-2 border rounded outline-none h-20" placeholder="เช่น ยางแตกฉุกเฉิน, ขอเบิกก่อนกำหนด..."></textarea></div>
+        <div><label class="block text-sm font-bold mb-1">ชื่อผู้ตรวจสอบ *</label><input type="text" id="prompt-checker" class="w-full p-2 border rounded outline-none" placeholder="ลงชื่อหัวหน้างาน" /></div>
+      </div>
+      <div class="mt-6 flex justify-end gap-2"><button onclick="closeModal('modal-prompt')" class="px-4 py-2 bg-gray-200 rounded font-bold hover:bg-gray-300 transition-colors">ยกเลิก</button><button id="btn-prompt-save" onclick="executePrompt()" class="px-4 py-2 text-white rounded font-bold bg-green-600 hover:bg-green-700 transition-colors">บันทึกและล้างเตือน</button></div>
+    </div>
+  </div>
+
+  <!-- Detail Alert Modal (รายละเอียดก่อนตรวจสอบ) -->
+  <div id="modal-alert-detail" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+    <div class="bg-white rounded-lg p-6 max-w-sm w-full">
+      <h3 class="text-lg font-bold text-red-600 mb-2">รายละเอียดเบิกซ้ำ</h3>
+      <div id="alert-detail-content" class="text-sm space-y-2"></div>
+      <button onclick="closeModal('modal-alert-detail')" class="mt-4 w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-bold transition-colors">ปิด</button>
+    </div>
+  </div>
+
+  <!-- Reason Display Modal (แสดงเหตุผลที่บันทึกแล้ว) -->
+  <div id="modal-reason-detail" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80] p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 animate-fadeIn">
+      <h3 class="text-lg font-bold text-green-700 mb-4 flex items-center gap-2">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        ข้อมูลการตรวจสอบ
+      </h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <span class="block font-bold text-gray-700 mb-1">เหตุผลการเบิก:</span>
+          <div id="display-reason" class="bg-gray-50 p-3 rounded border text-gray-600 whitespace-pre-line min-h-[3rem]"></div>
+        </div>
+        <div>
+          <span class="block font-bold text-gray-700 mb-1">ตรวจสอบและอนุมัติโดย:</span>
+          <div id="display-checker" class="bg-gray-50 p-2 rounded border text-gray-800 font-semibold"></div>
+        </div>
+      </div>
+      <button onclick="closeModal('modal-reason-detail')" class="mt-6 w-full bg-gray-200 hover:bg-gray-300 py-2 rounded font-bold transition-colors">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+
+  <!-- Custom Alert/Confirm -->
+  <div id="modal-alert" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[90] p-4">
+    <div class="bg-white rounded-lg p-6 text-center shadow-xl w-80">
+      <h3 id="alert-title" class="text-lg font-bold mb-2"></h3>
+      <p id="alert-msg" class="mb-4 text-sm whitespace-pre-line"></p>
+      <button id="alert-btn" onclick="closeModal('modal-alert')" class="w-full text-white font-bold py-2 rounded">ตกลง</button>
+    </div>
+  </div>
+
+  <div id="modal-confirm" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[90] p-4">
+    <div class="bg-white rounded-lg p-6 shadow-xl max-w-md w-full">
+      <h3 class="text-lg font-bold mb-3 flex items-center gap-2">⚠️ ยืนยันการดำเนินการ</h3>
+      <p id="confirm-msg" class="mb-6 text-sm text-gray-600 whitespace-pre-line leading-relaxed"></p>
+      <div class="flex flex-col sm:flex-row-reverse gap-2">
+        <button id="confirm-yes" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold transition-colors"></button>
+        <button id="confirm-no" class="w-full sm:w-auto px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded font-bold transition-colors"></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyRfv6La0jrLr_rtmv3qQeJ7Pz0sIsz2uwG1_nd4F9GyjN6By_xgKFIrZPldM_xTdQJwQ/exec';
+    
+    let state = {
+      transactions: [], vehicles: [], itemSettings: {}, inventory: {},
+      existingProducts: [], existingPartsCodes: [], existingShops: [], existingVehicles: [],
+      barcodeMap: {}, 
+      activeTab: 'receive',
+      isOnline: navigator.onLine,
+      syncTasks: [],
+      scannerOrigin: null,
+      html5QrcodeScanner: null,
+      editingTx: null, promptTx: null, detailItem: null,
+      alertData: [], lowStockAlerts: []
+    };
+
+    const getEl = id => document.getElementById(id);
+    const formatDate = d => new Date(d).toISOString().split('T')[0];
+    
+    const parseCSV = (csvText) => {
+      const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+      if (lines.length === 0) return [];
+      const parseRow = (row) => {
+        const result = []; let insideQuote = false; let currentValue = "";
+        for (let i = 0; i < row.length; i++) {
+          const char = row[i];
+          if (char === '"') insideQuote = !insideQuote;
+          else if (char === ',' && !insideQuote) { result.push(currentValue); currentValue = ""; } 
+          else currentValue += char;
+        }
+        result.push(currentValue); return result;
+      };
+      const headers = parseRow(lines[0]).map(h => h.trim());
+      const result = [];
+      for (let i = 1; i < lines.length; i++) {
+        const obj = {}; const currentLine = parseRow(lines[i]);
+        headers.forEach((header, index) => {
+          let val = currentLine[index] !== undefined ? currentLine[index].trim() : '';
+          if(val.startsWith('"') && val.endsWith('"')) val = val.substring(1, val.length-1);
+          obj[header] = val;
+        });
+        obj._rowIndex = i + 1; 
+        result.push(obj);
+      }
+      return result;
+    };
+
+    const fetchWithTimeout = async (url, options, timeout = 15000) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id); return response;
+      } catch (error) { clearTimeout(id); throw error; }
+    };
+    
+    window.onload = async () => {
+      getEl('rec-date').value = formatDate(new Date());
+      getEl('dis-date').value = formatDate(new Date());
+      
+      window.addEventListener('online', () => { state.isOnline = true; renderNetwork(); });
+      window.addEventListener('offline', () => { state.isOnline = false; renderNetwork(); });
+
+      const cachedTrans = localStorage.getItem('cachedTransactions_v14');
+      const cachedVehicles = localStorage.getItem('cachedVehicles_v14');
+      const cachedItemSettings = localStorage.getItem('cachedItemSettings_v14');
+      
+      if (cachedTrans && cachedVehicles) {
+        state.transactions = JSON.parse(cachedTrans);
+        state.vehicles = JSON.parse(cachedVehicles);
+        if(cachedItemSettings) state.itemSettings = JSON.parse(cachedItemSettings);
+        computeDerivedState();
+        getEl('loading-screen').classList.add('hidden');
+        getEl('main-content').style.display = 'block';
+        getEl('sync-indicator').classList.remove('hidden');
+        switchTab('receive');
+      }
+
+      try {
+        const [vRes, tRes, lRes] = await Promise.all([
+          fetchWithTimeout('https://docs.google.com/spreadsheets/d/e/2PACX-1vTsqgQEO--X1boq_GQ0zBA-GSH5PubM3tMFaqd3m2NnY4AFBmJt7XjDEZ8lSfqS3SeyZ-xLLbqwJC4q/pub?gid=0&single=true&output=csv', {}, 10000),
+          fetchWithTimeout('https://docs.google.com/spreadsheets/d/e/2PACX-1vTsqgQEO--X1boq_GQ0zBA-GSH5PubM3tMFaqd3m2NnY4AFBmJt7XjDEZ8lSfqS3SeyZ-xLLbqwJC4q/pub?gid=1269813507&single=true&output=csv', {}, 10000),
+          fetchWithTimeout('https://docs.google.com/spreadsheets/d/e/2PACX-1vTsqgQEO--X1boq_GQ0zBA-GSH5PubM3tMFaqd3m2NnY4AFBmJt7XjDEZ8lSfqS3SeyZ-xLLbqwJC4q/pub?gid=140236194&single=true&output=csv', {}, 10000)
+        ]);
+
+        state.vehicles = parseCSV(await vRes.text());
+        state.transactions = parseCSV(await tRes.text());
+        
+        const lifespanData = parseCSV(await lRes.text());
+        state.itemSettings = {};
+        lifespanData.forEach(row => {
+          if (row['ชื่อสินค้า']) {
+            state.itemSettings[row['ชื่อสินค้า'].trim()] = {
+              lifespan: row['อายุการใช้งาน'] || '',
+              minStock: row['แจ้งเตือนขั้นต่ำ'] || ''
+            };
+          }
+        });
+
+        localStorage.setItem('cachedVehicles_v14', JSON.stringify(state.vehicles));
+        localStorage.setItem('cachedTransactions_v14', JSON.stringify(state.transactions));
+        localStorage.setItem('cachedItemSettings_v14', JSON.stringify(state.itemSettings));
+
+      } catch (e) { console.error("Fetch error", e); } 
+      finally {
+        computeDerivedState();
+        getEl('loading-screen').classList.add('hidden');
+        getEl('sync-indicator').classList.add('hidden');
+        getEl('main-content').style.display = 'block';
+        if(state.activeTab === 'receive') switchTab('receive'); 
+      }
+    };
+
+    function computeDerivedState() {
+      state.inventory = {};
+      state.barcodeMap = {};
+      const sortedTrans = [...state.transactions].sort((a, b) => new Date(a['วันที่']) - new Date(b['วันที่']));
+      
+      sortedTrans.forEach(curr => {
+        const product = (curr['ชื่อสินค้า'] || '').trim();
+        const type = curr['ประเภทรายการ'];
+        const qty = parseFloat(curr['จำนวน'] || 0);
+        const parts = (curr['รหัสอะไหล่'] || '').trim();
+
+        if (!product) return;
+        if (!state.inventory[product]) state.inventory[product] = { in: 0, out: 0, balance: 0, partsCodes: new Set(), mainPart: '' };
+        
+        if (parts !== '') {
+           state.inventory[product].partsCodes.add(parts);
+           state.inventory[product].mainPart = parts; 
+        }
+
+        if (type === 'รับเข้า') {
+          state.inventory[product].in += qty;
+          state.inventory[product].balance += qty;
+        } else if (type === 'เบิกออก') {
+          state.inventory[product].out += qty;
+          state.inventory[product].balance -= qty;
+        }
+      });
+
+      state.existingProducts = Object.keys(state.inventory).sort();
+      
+      state.existingProducts.forEach(p => {
+         state.inventory[p].partsCodes.forEach(code => {
+             state.barcodeMap[code.toLowerCase()] = p;
+         });
+      });
+
+      state.existingPartsCodes = Object.keys(state.barcodeMap).map(k => state.inventory[state.barcodeMap[k]].mainPart).filter(Boolean).sort();
+      state.existingShops = [...new Set(state.transactions.filter(t => t['ประเภทรายการ'] === 'รับเข้า' && t['ชื่อร้านค้า']).map(t => t['ชื่อร้านค้า']))].filter(Boolean);
+      
+      const masterVeh = [];
+      state.vehicles.forEach(v => {
+          const keys = Object.keys(v);
+          if (keys.length > 1 && v[keys[1]]) masterVeh.push(String(v[keys[1]]).trim());
+          if (v['รหัส']) masterVeh.push(String(v['รหัส']).trim());
+          if (v['รหัสรถ']) masterVeh.push(String(v['รหัสรถ']).trim());
+          if (v['หน่วยงาน']) masterVeh.push(String(v['หน่วยงาน']).trim());
+      });
+      const txVeh = state.transactions.filter(t => t['ประเภทรายการ'] === 'เบิกออก' && (t['รหัสรถ'] || t['รหัสรถที่เบิก'])).map(t => String(t['รหัสรถ'] || t['รหัสรถที่เบิก']).trim());
+      state.existingVehicles = [...new Set([...masterVeh, ...txVeh])].filter(Boolean).sort();
+
+      // Alerts
+      state.alertData = [];
+      const dispatches = state.transactions.filter(t => t['ประเภทรายการ'] === 'เบิกออก');
+      const grouped = {};
+      dispatches.forEach(t => {
+          const v = t['รหัสรถ'] || t['รหัสรถที่เบิก'];
+          const p = (t['ชื่อสินค้า']||'').trim();
+          if (!v || !p) return;
+          const key = `${v}_${p}`;
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(t);
+      });
+
+      Object.values(grouped).forEach(group => {
+          group.sort((a, b) => {
+             const dDiff = new Date(a['วันที่']) - new Date(b['วันที่']);
+             if(dDiff !== 0) return dDiff;
+             return (a._rowIndex || 0) - (b._rowIndex || 0); // เรียงตามเวลาเกิดก่อนเกิดหลัง
+          });
+          
+          for (let i = 1; i < group.length; i++) {
+              const currTx = group[i];
+              const prevTx = group[i-1];
+              const pName = (currTx['ชื่อสินค้า']||'').trim();
+              const targetLifespan = state.itemSettings[pName]?.lifespan;
+              if (targetLifespan) {
+                  const diffDays = (new Date(currTx['วันที่']) - new Date(prevTx['วันที่'])) / 86400000;
+                  if (diffDays >= 0 && diffDays / 30.44 < parseFloat(targetLifespan)) {
+                      if (!(currTx['สถานะการเตือน'] || '').includes('ตรวจสอบแล้ว') && !state.alertData.some(a => a._rowIndex === currTx._rowIndex)) {
+                          state.alertData.push(currTx);
+                      }
+                  }
+              }
+          }
+      });
+      state.alertData.sort((a, b) => new Date(b['วันที่']) - new Date(a['วันที่']));
+
+      state.lowStockAlerts = [];
+      state.existingProducts.forEach(product => {
+        const balance = state.inventory[product].balance;
+        const minStr = state.itemSettings[product]?.minStock;
+        if (minStr && minStr.trim() !== '') {
+          const th = parseFloat(minStr);
+          if (!isNaN(th) && balance <= th) state.lowStockAlerts.push({ product, partsCode: state.inventory[product].mainPart, balance, threshold: th });
+        }
+      });
+      state.lowStockAlerts.sort((a, b) => a.balance - b.balance);
+
+      updateSelectOptions();
+      renderAllTables();
+    }
+
+    // --- Custom Autocomplete ---
+    window.showAC = function(inputId, optionsList) {
+      const input = getEl(inputId);
+      const val = input.value.toLowerCase().trim();
+      let ac = getEl(inputId + '-ac');
+      
+      if(!ac) {
+        ac = document.createElement('div');
+        ac.id = inputId + '-ac';
+        ac.className = 'ac-container hidden';
+        input.parentNode.classList.add('relative');
+        input.parentNode.appendChild(ac);
+      }
+      
+      const filtered = optionsList.filter(item => item.toLowerCase().includes(val));
+      if(filtered.length === 0 || (filtered.length === 1 && filtered[0].toLowerCase() === val)) {
+        ac.classList.add('hidden');
+        return;
+      }
+      
+      ac.innerHTML = filtered.map(item => `<div class="ac-item" onclick="selectAC('${inputId}', '${item.replace(/'/g, "\\'")}')">${item}</div>`).join('');
+      ac.classList.remove('hidden');
+    }
+
+    window.selectAC = function(inputId, val) {
+      getEl(inputId).value = val;
+      const ac = getEl(inputId + '-ac');
+      if(ac) ac.classList.add('hidden');
+      
+      if(inputId.includes('parts')) handlePartsChange(inputId.split('-')[0]);
+      if(inputId.includes('product')) handleProductChange(inputId.split('-')[0]);
+      if(inputId.includes('vehicle')) checkDispatchWarning();
+    }
+
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.ac-container').forEach(el => {
+        const inputId = el.id.replace('-ac', '');
+        const inputEl = document.getElementById(inputId);
+        if(!el.contains(e.target) && e.target !== inputEl) {
+            el.classList.add('hidden');
+        }
+      });
+    });
+
+    function updateSelectOptions() {
+      getEl('shops-select').innerHTML = '<option value="">-- เลือกร้านค้า --</option>' + state.existingShops.map(s => `<option value="${s}">${s}</option>`).join('');
+      getEl('hist-product').innerHTML = '<option value="">-- ทุกรายการ --</option>' + state.existingProducts.map(p => `<option value="${p}">${p}</option>`).join('');
+      getEl('hist-vehicle').innerHTML = '<option value="">-- ทุกคัน/ทุกหน่วยงาน --</option>' + state.existingVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
+    }
+
+    function renderNetwork() {
+      const banner = getEl('offline-banner');
+      if(state.isOnline) banner.classList.add('hidden'); else banner.classList.remove('hidden');
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      ['receive', 'dispatch', 'summary', 'shops', 'history', 'alerts'].forEach(t => {
+        getEl(`tab-${t}`).classList.add('hidden');
+        const btn = getEl(`tab-btn-${t}`);
+        const minW = t === 'alerts' ? 'min-w-[120px]' : 'min-w-[100px]';
+        btn.className = `relative flex-1 ${minW} py-4 text-center font-medium transition-colors ${t === tab ? getTabColor(t) : 'text-gray-500 hover:bg-gray-50'}`;
+      });
+      getEl(`tab-${tab}`).classList.remove('hidden');
+      if(tab === 'summary') renderSummary();
+      if(tab === 'shops') renderShops();
+      if(tab === 'history') renderHistory();
+      if(tab === 'alerts') renderAlerts();
+    }
+
+    function getTabColor(tab) {
+      if(tab==='receive') return 'bg-blue-50 text-blue-700 border-b-2 border-blue-700';
+      if(tab==='dispatch') return 'bg-orange-50 text-orange-600 border-b-2 border-orange-600';
+      if(tab==='summary') return 'bg-green-50 text-green-700 border-b-2 border-green-700';
+      if(tab==='shops') return 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-700';
+      if(tab==='history') return 'bg-purple-50 text-purple-700 border-b-2 border-purple-700';
+      if(tab==='alerts') return 'bg-red-50 text-red-700 border-b-2 border-red-700';
+    }
+
+    function handlePartsChange(prefix) {
+      const code = getEl(`${prefix}-parts`).value.trim();
+      if(code !== '') {
+        const matchedProduct = state.barcodeMap[code.toLowerCase()];
+        if(matchedProduct) {
+          getEl(`${prefix}-product`).value = matchedProduct;
+          if(prefix === 'dis') checkDispatchWarning();
+        }
+      }
+    }
+
+    function handleProductChange(prefix) {
+      const name = getEl(`${prefix}-product`).value.trim();
+      if(state.inventory[name] && state.inventory[name].mainPart) {
+        const currentPart = getEl(`${prefix}-parts`).value.trim();
+        if(!currentPart || state.barcodeMap[currentPart.toLowerCase()] !== name) {
+            getEl(`${prefix}-parts`).value = state.inventory[name].mainPart;
+        }
+      } else if (name === '') {
+        getEl(`${prefix}-parts`).value = '';
+      }
+      if(prefix === 'dis') checkDispatchWarning();
+    }
+
+    function checkDispatchWarning() {
+      const prod = getEl('dis-product').value.trim();
+      const veh = getEl('dis-vehicle').value.trim();
+      const warnBox = getEl('dis-lifespan-warning');
+      const stockBox = getEl('dis-stock-warning');
+      
+      if(prod && state.inventory[prod]) {
+        stockBox.classList.remove('hidden');
+        stockBox.innerText = `คงเหลือในสต๊อก: ${state.inventory[prod].balance}`;
+        stockBox.className = `text-xs font-bold mt-1 ${state.inventory[prod].balance <= 0 ? 'text-red-500' : 'text-blue-600'}`;
+      } else {
+        stockBox.classList.add('hidden');
+      }
+
+      warnBox.classList.add('hidden');
+      const targetLifespan = state.itemSettings[prod]?.lifespan;
+      if(!prod || !veh || !targetLifespan) return;
+
+      const past = state.transactions.filter(t => {
+          const tVeh = (t['รหัสรถ'] || t['รหัสรถที่เบิก'] || '').trim();
+          return t['ประเภทรายการ']==='เบิกออก' && (t['ชื่อสินค้า']||'').trim()===prod && tVeh===veh;
+      }).sort((a,b)=> {
+          const dDiff = new Date(b['วันที่']) - new Date(a['วันที่']);
+          return dDiff !== 0 ? dDiff : Math.abs(b._rowIndex || 0) - Math.abs(a._rowIndex || 0); // ใหม่สุดขึ้นก่อน
+      });
+      
+      if(past.length > 0) {
+        const curDateStr = getEl('dis-date').value;
+        const diffDays = (new Date(curDateStr) - new Date(past[0]['วันที่'])) / 86400000;
+        const ms = diffDays/30.44;
+        
+        // กันเหนียวกรณีวันที่ปัจจุบันน้อยกว่าวันที่ในอดีต (บั๊กวันที่ติดลบ)
+        if(diffDays >= 0 && ms < parseFloat(targetLifespan)) {
+          let timeText = diffDays < 30 ? `${Math.floor(diffDays)} วัน` : `${ms.toFixed(1)} เดือน`;
+          warnBox.classList.remove('hidden');
+          warnBox.innerHTML = `<strong>คำเตือน:</strong> เพิ่งเบิกไปเมื่อ ${past[0]['วันที่']} <br/>(ผ่านไป ${timeText} จากเป้าหมาย ${targetLifespan} เดือน)`;
+        }
+      }
+    }
+
+    function closeModal(id) { getEl(id).classList.add('hidden'); }
+    function openModal(id) { getEl(id).classList.remove('hidden'); }
+    
+    function showAlert(msg, type='info') {
+      getEl('alert-msg').innerText = msg;
+      getEl('alert-title').innerText = type==='error'?'❌ ผิดพลาด':(type==='warning'?'⚠️ แจ้งเตือน':'✅ สำเร็จ');
+      const btn = getEl('alert-btn');
+      btn.className = `w-full text-white font-bold py-2 rounded ${type==='error'?'bg-red-600 hover:bg-red-700':(type==='warning'?'bg-orange-500 hover:bg-orange-600':'bg-blue-600 hover:bg-blue-700')}`;
+      openModal('modal-alert');
+    }
+
+    // ระบบ Confirm (อัปเดตให้เสถียร)
+    function showConfirm(msg, onYes, onNo = null, txtYes='ยืนยัน', txtNo='ยกเลิก') {
+      getEl('confirm-msg').innerText = msg;
+      const bY = getEl('confirm-yes'), bN = getEl('confirm-no');
+      
+      bY.innerText = txtYes; 
+      bY.onclick = () => { 
+          closeModal('modal-confirm'); 
+          if(typeof onYes === 'function') onYes(); 
+      };
+      
+      bN.innerText = txtNo; 
+      bN.onclick = () => { 
+          closeModal('modal-confirm'); 
+          if(typeof onNo === 'function') onNo(); 
+      };
+      
+      openModal('modal-confirm');
+    }
+
+    function showReasonDetail(rowIndex) {
+      const tx = state.transactions.find(t => t._rowIndex === rowIndex);
+      if(!tx) return;
+      
+      const reason = tx['เหตุผล'] && tx['เหตุผล'] !== '-' ? tx['เหตุผล'] : 'ไม่ได้ระบุเหตุผล / หมายเหตุเพิ่มเติม';
+      const checker = tx['ตรวจสอบโดย'] && tx['ตรวจสอบโดย'] !== '-' ? tx['ตรวจสอบโดย'] : 'ไม่ระบุชื่อผู้ตรวจสอบ';
+      
+      getEl('display-reason').innerText = reason;
+      getEl('display-checker').innerText = checker;
+      
+      openModal('modal-reason-detail');
+    }
+
+    function getStatusBadgeHTML(t) {
+      const statusText = (t['สถานะการเตือน'] || '').trim();
+      if (!statusText) return '-';
+      
+      if (statusText.includes('ตรวจสอบแล้ว')) {
+          return `<button onclick="showReasonDetail(${t._rowIndex})" class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold hover:bg-green-200 transition-colors flex items-center gap-1 w-max" title="คลิกเพื่อดูข้อมูลตรวจสอบ">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> 
+                    ตรวจสอบแล้ว
+                  </button>`;
+      }
+      if (statusText.includes('รอตรวจสอบ')) {
+          return `<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> 
+                    รอตรวจสอบ
+                  </span>`;
+      }
+      return `<span class="text-gray-500 truncate block">${statusText}</span>`;
+    }
+
+    function addToast(id, msg, status) {
+      const c = getEl('toast-container');
+      let el = getEl(`toast-${id}`);
+      if(!el) {
+        el = document.createElement('div');
+        el.id = `toast-${id}`;
+        c.appendChild(el);
+      }
+      el.className = `flex items-center gap-3 px-4 py-3 rounded shadow-lg text-sm font-bold text-white animate-slideInRight mb-2 ${status==='syncing'?'bg-blue-600':(status==='success'?'bg-green-600':'bg-red-600')}`;
+      el.innerHTML = (status==='syncing' ? `<svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>` : (status==='success'?'✅':'❌')) + ' ' + msg;
+      
+      while(c.children.length > 3) c.removeChild(c.firstChild);
+      if(status !== 'syncing') { setTimeout(() => { if(el.parentElement) el.parentElement.removeChild(el); }, 4000); }
+    }
+
+    async function handleSubmit(type) {
+      const pre = type==='receive'?'rec':'dis';
+      const date = getEl(`${pre}-date`).value;
+      const parts = getEl(`${pre}-parts`).value.trim();
+      const prod = getEl(`${pre}-product`).value.trim();
+      const qtyStr = getEl(`${pre}-qty`).value;
+      
+      if(!prod || !qtyStr) return showAlert("กรุณากรอกชื่อสินค้าและจำนวนให้ครบถ้วน", 'error');
+
+      if(type === 'receive') {
+        const shop = getEl('rec-shop').value.trim();
+        if(!shop) return showAlert("กรุณาระบุ ชื่อร้านค้า/ผู้จำหน่าย ให้ครบถ้วน", 'error');
+      }
+
+      if(!state.isOnline) return showAlert("คุณออฟไลน์อยู่! ไม่สามารถบันทึกข้อมูลได้", 'error');
+
+      const btn = getEl(`btn-save-${pre}`);
+      if(btn.disabled) return;
+
+      if(type==='dispatch') {
+        const veh = getEl('dis-vehicle').value.trim();
+        if(!veh) return showAlert("กรุณาระบุ รหัสรถ/หน่วยงาน ให้ครบถ้วน", 'error'); 
+
+        const bal = state.inventory[prod]?.balance || 0;
+        if(parseFloat(qtyStr) > bal) return showAlert(`ไม่อนุญาตให้เบิก!\nจำนวนต้องการเบิก (${qtyStr}) มีมากกว่าคงเหลือ (${bal})`, 'error');
+        
+        const tarL = state.itemSettings[prod]?.lifespan;
+        if(veh && tarL) {
+          const past = state.transactions.filter(t => {
+             const tVeh = (t['รหัสรถ'] || t['รหัสรถที่เบิก'] || '').trim();
+             return t['ประเภทรายการ']==='เบิกออก' && (t['ชื่อสินค้า']||'').trim()===prod && tVeh===veh;
+          }).sort((a,b)=>{
+             const dDiff = new Date(b['วันที่']) - new Date(a['วันที่']);
+             return dDiff !== 0 ? dDiff : (b._rowIndex || 0) - (a._rowIndex || 0); // ใหม่สุดขึ้นก่อน
+          });
+          
+          if(past.length > 0) {
+             const diffDays = (new Date(date) - new Date(past[0]['วันที่']))/86400000;
+             const ms = diffDays/30.44;
+             if(diffDays >= 0 && ms < parseFloat(tarL)) {
+                let timeText = diffDays < 30 ? `${Math.floor(diffDays)} วัน` : `${ms.toFixed(1)} เดือน`;
+                
+                return showConfirm(`⚠️ แจ้งเตือนก่อนเบิก!\nรหัสรถ/หน่วยงาน ${veh} เพิ่งเบิก "${prod}" ไปเมื่อ ${past[0]['วันที่']}\nซึ่งยังไม่ครบกำหนด (${tarL} เดือน) โดยผ่านไปเพียง ${timeText}\nแน่ใจหรือไม่ที่จะเบิกซ้ำ?`, () => doSubmit(type, true));
+             }
+          }
+        }
+      }
+      doSubmit(type, false);
+    }
+
+    async function doSubmit(type, isAlertPending) {
+      const pre = type==='receive'?'rec':'dis';
+      const btn = getEl(`btn-save-${pre}`);
+      btn.disabled = true; btn.innerText = "กำลังบันทึก...";
+      
+      let prod = getEl(`${pre}-product`).value.trim();
+      let parts = getEl(`${pre}-parts`).value.trim();
+      
+      // ถ้าช่องพาร์ทว่างเปล่าตอนเบิก ให้ดึงจากข้อมูลหลักที่มีไปเติมให้
+      if(type==='dispatch' && !parts && state.inventory[prod]?.mainPart) parts = state.inventory[prod].mainPart;
+
+      const maxId = state.transactions.length > 0 ? Math.max(...state.transactions.map(t=>t._rowIndex||0)) : 1;
+      const newTx = {
+        action: 'saveTransaction', _rowIndex: maxId+1,
+        'วันที่': getEl(`${pre}-date`).value, 'ประเภทรายการ': type==='receive'?'รับเข้า':'เบิกออก',
+        'รหัสอะไหล่': parts, 'ชื่อสินค้า': prod, 'จำนวน': parseFloat(getEl(`${pre}-qty`).value),
+        'ราคารวม': type==='receive'?parseFloat(getEl('rec-price').value||0):'', 'ชื่อร้านค้า': type==='receive'?getEl('rec-shop').value:'',
+        'รหัสรถ': type==='dispatch'?getEl('dis-vehicle').value:'', 'สถานะการเตือน': isAlertPending?'รอตรวจสอบ':'',
+        'เหตุผล': '', 'ตรวจสอบโดย': ''
+      };
+
+      state.transactions.unshift(newTx);
+      computeDerivedState(); 
+      
+      getEl(`${pre}-product`).value = ''; getEl(`${pre}-parts`).value = ''; getEl(`${pre}-qty`).value = '';
+      if(type==='receive') { getEl('rec-price').value=''; getEl('rec-shop').value=''; }
+      if(type==='dispatch') { getEl('dis-vehicle').value=''; getEl('dis-stock-warning').classList.add('hidden'); getEl('dis-lifespan-warning').classList.add('hidden'); }
+      
+      showAlert("บันทึกรายการสำเร็จ!", "success");
+      const tId = Date.now();
+      addToast(tId, "กำลังบันทึก...", "syncing");
+
+      try {
+        await fetchWithTimeout(WEB_APP_URL, { method: 'POST', body: JSON.stringify(newTx) });
+        addToast(tId, "บันทึกคลาวด์สำเร็จ", "success");
+      } catch(e) {
+        addToast(tId, "คลาวด์ออฟไลน์ (บันทึกในเครื่องแล้ว)", "error");
+      }
+      btn.disabled = false; btn.innerText = type==='receive'?"บันทึกรับเข้าสต๊อก":"บันทึกเบิกออก";
+    }
+
+    function renderAllTables() {
+      if(state.activeTab==='summary') renderSummary();
+      if(state.activeTab==='shops') renderShops();
+      if(state.activeTab==='history') renderHistory();
+      if(state.activeTab==='alerts') renderAlerts();
+      
+      const badge = getEl('alert-badge');
+      const count = state.alertData.length + state.lowStockAlerts.length;
+      if(count > 0) { badge.classList.remove('hidden'); badge.innerText = count; } else badge.classList.add('hidden');
+      
+      localStorage.setItem('cachedTransactions_v14', JSON.stringify(state.transactions));
+    }
+
+    function renderSummary() {
+      const src = getEl('summary-search').value.toLowerCase();
+      const arr = state.existingProducts.filter(p => {
+         if(p.toLowerCase().includes(src)) return true;
+         const codes = Array.from(state.inventory[p].partsCodes);
+         return codes.some(c => c.toLowerCase().includes(src));
+      });
+      
+      const tb = getEl('summary-tbody');
+      if(arr.length===0) return tb.innerHTML = `<tr><td colspan="2" class="px-6 py-8 text-center text-gray-500">ไม่พบสินค้าที่ค้นหา</td></tr>`;
+      
+      tb.innerHTML = arr.map(p => {
+        const inv = state.inventory[p];
+        const set = state.itemSettings[p] || {};
+        const low = inv.balance <= (parseFloat(set.minStock)||0) && set.minStock ? 'text-red-600' : 'text-blue-700';
+        const allCodes = Array.from(inv.partsCodes).join(', ');
+        
+        return `<tr class="hover:bg-blue-50 cursor-pointer transition-colors" onclick="openDetail('${p.replace(/'/g, "\\'")}')">
+          <td class="px-6 py-4 text-sm font-semibold text-gray-900">
+            <div class="flex flex-wrap items-center gap-2">${p}
+              ${set.lifespan ? `<span class="text-xs font-normal bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full whitespace-nowrap">อายุ: ${set.lifespan} ด.</span>`:''}
+              ${set.minStock ? `<span class="text-xs font-normal bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full whitespace-nowrap">&le; ${set.minStock}</span>`:''}
+            </div>
+            ${allCodes ? `<div class="text-xs text-gray-500 mt-1 font-normal break-all">พาร์ท: ${allCodes}</div>`:''}
+          </td>
+          <td class="px-6 py-4 text-sm text-right font-bold bg-blue-50/30 ${low}">${inv.balance}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderShops() {
+      const shop = getEl('shops-select').value;
+      const c = getEl('shops-table-container');
+      if(!shop) return c.classList.add('hidden');
+      c.classList.remove('hidden');
+      
+      const txs = state.transactions.filter(t => t['ประเภทรายการ']==='รับเข้า' && t['ชื่อร้านค้า']===shop).sort((a,b)=>new Date(b['วันที่']) - new Date(a['วันที่']));
+      getEl('shops-tbody').innerHTML = txs.map(t => `<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-sm">${t['วันที่']}</td><td class="px-4 py-3 text-sm font-medium">${t['ชื่อสินค้า']}</td><td class="px-4 py-3 text-sm text-right font-bold">${t['จำนวน']}</td><td class="px-4 py-3 text-sm text-right text-green-600">${t['ราคารวม']?parseFloat(t['ราคารวม']).toLocaleString()+' ฿':'-'}</td></tr>`).join('');
+      getEl('shops-total').innerHTML = `รวมค่าใช้จ่ายทั้งหมดจากร้านนี้: ${txs.reduce((s,t)=>s+(parseFloat(t['ราคารวม'])||0),0).toLocaleString()} ฿`;
+    }
+
+    function renderHistory() {
+      const type = getEl('hist-type').value;
+      const prod = getEl('hist-product').value;
+      const veh = getEl('hist-vehicle').value;
+      const sD = getEl('hist-start').value;
+      const eD = getEl('hist-end').value;
+
+      const txs = state.transactions.filter(t => {
+        if(type!=='all' && t['ประเภทรายการ']!==type) return false;
+        if(prod && (t['ชื่อสินค้า']||'').trim()!==prod) return false;
+        if(veh && (t['รหัสรถ']||t['รหัสรถที่เบิก']||'')!==veh) return false;
+        if(sD && t['วันที่']<sD) return false;
+        if(eD && t['วันที่']>eD) return false;
+        return true;
+      }).sort((a,b)=>new Date(b['วันที่']) - new Date(a['วันที่']));
+
+      getEl('history-tbody').innerHTML = txs.map(t => `<tr class="hover:bg-gray-50">
+        <td class="px-3 py-3 text-sm text-gray-600">${t['วันที่']}</td>
+        <td class="px-3 py-3 text-sm"><span class="px-2 py-1 text-xs rounded-full ${t['ประเภทรายการ']==='รับเข้า'?'bg-green-100 text-green-800':'bg-orange-100 text-orange-800'}">${t['ประเภทรายการ']}</span></td>
+        <td class="px-3 py-3 text-sm font-medium">${t['ชื่อสินค้า']} <span class="text-xs text-gray-400 block">${t['รหัสอะไหล่']||''}</span></td>
+        <td class="px-3 py-3 text-sm text-right font-bold">${t['จำนวน']}</td>
+        <td class="px-3 py-3 text-sm text-gray-500">${t['ประเภทรายการ']==='รับเข้า'?(t['ชื่อร้านค้า']||'-'):(t['รหัสรถ']||t['รหัสรถที่เบิก']||'-')}</td>
+        <td class="px-3 py-3 text-xs text-gray-500 max-w-[150px] truncate">${getStatusBadgeHTML(t)}</td>
+        <td class="px-3 py-3 text-center whitespace-nowrap">
+           <button onclick='openEdit(${t._rowIndex})' class="text-blue-500 mx-1 bg-blue-50 p-1.5 rounded">✏️</button>
+           <button onclick='cmdDelete(${t._rowIndex})' class="text-red-500 mx-1 bg-red-50 p-1.5 rounded">🗑️</button>
+        </td>
+      </tr>`).join('');
+    }
+
+    function renderAlerts() {
+      const lb = getEl('alerts-lowstock-tbody');
+      if(state.lowStockAlerts.length===0) lb.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">✅ สต๊อกสินค้ายังอยู่ในเกณฑ์ปกติ</td></tr>`;
+      else lb.innerHTML = state.lowStockAlerts.map(a => `<tr class="hover:bg-orange-50"><td class="px-4 py-3 text-sm text-gray-500">${a.partsCode||'-'}</td><td class="px-4 py-3 text-sm font-bold text-gray-900">${a.product}</td><td class="px-4 py-3 text-sm text-center text-gray-600">&le; ${a.threshold}</td><td class="px-4 py-3 text-sm text-right font-bold text-red-600">${a.balance}</td></tr>`).join('');
+
+      const db = getEl('alerts-dispatch-tbody');
+      if(state.alertData.length===0) db.innerHTML = `<tr><td colspan="5" class="px-4 py-12 text-center text-gray-500">✅ ไม่มีรายการแจ้งเตือนที่ต้องตรวจสอบ</td></tr>`;
+      else db.innerHTML = state.alertData.map((t,i) => `<tr class="hover:bg-red-50 transition-colors"><td class="px-4 py-3 text-sm font-medium text-gray-900">${t['วันที่']}</td><td class="px-4 py-3 text-sm font-bold text-orange-600">${t['รหัสรถ']}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${t['ชื่อสินค้า']} <span class="text-xs text-gray-500">(${t['จำนวน']} ชิ้น)</span></td><td class="px-4 py-3 text-center text-sm"><button onclick='showAlertDetail(${i})' class="text-blue-600 underline">ดูรายละเอียด</button></td><td class="px-4 py-3 text-right"><button onclick='openPrompt(${i})' class="bg-green-600 text-white px-3 py-1.5 rounded text-xs shadow-sm">✅ ตรวจสอบ</button></td></tr>`).join('');
+    }
+
+    function openDetail(productName) {
+      if(!productName) return;
+      state.detailItem = productName;
+      const elTitle = getEl('detail-title');
+      if(elTitle) elTitle.innerText = `ประวัติรายการ: ${productName}`;
+      
+      const elBal = getEl('detail-balance');
+      if(elBal) elBal.innerText = `คงเหลือ: ${state.inventory[productName].balance}`;
+      
+      const elBal2 = getEl('detail-balance-2');
+      if(elBal2) elBal2.innerText = `คงเหลือ: ${state.inventory[productName].balance}`;
+      
+      getEl('detail-lifespan').value = state.itemSettings[productName]?.lifespan || '';
+      getEl('detail-minstock').value = state.itemSettings[productName]?.minStock || '';
+      getEl('detail-filter').value = 'all';
+      closeGlobalRename();
+      renderDetailTable();
+      openModal('modal-detail');
+    }
+
+    function renderDetailTable() {
+      const f = getEl('detail-filter').value;
+      const txs = state.transactions.filter(t => (t['ชื่อสินค้า']||'').trim()===state.detailItem && (f==='all'||t['ประเภทรายการ']===f)).sort((a,b)=>new Date(b['วันที่'])-new Date(a['วันที่']));
+      getEl('detail-tbody').innerHTML = txs.map(t => `<tr class="hover:bg-gray-50"><td class="px-4 py-2 text-sm">${t['วันที่']}</td><td class="px-4 py-2 text-sm"><span class="bg-gray-200 px-2 py-0.5 rounded text-xs">${t['ประเภทรายการ']}</span></td><td class="px-4 py-2 text-sm text-right font-bold">${t['จำนวน']}</td><td class="px-4 py-2 text-sm">${t['ประเภทรายการ']==='รับเข้า'?(t['ชื่อร้านค้า']||'-'):(t['รหัสรถ']||t['รหัสรถที่เบิก']||'-')}</td><td class="px-4 py-2 text-sm">${getStatusBadgeHTML(t)}</td><td class="px-4 py-2 text-center"><button onclick='openEdit(${t._rowIndex})' class="mx-1 text-xl">📝</button><button onclick='cmdDelete(${t._rowIndex})' class="mx-1 text-xl text-red-500">🗑️</button></td></tr>`).join('');
+    }
+
+    async function saveSettings() {
+      const ls = getEl('detail-lifespan').value;
+      const ms = getEl('detail-minstock').value;
+      const btn = getEl('btn-save-settings');
+      btn.innerText="รอ..."; btn.disabled=true;
+      
+      state.itemSettings[state.detailItem] = {lifespan: ls, minStock: ms};
+      computeDerivedState(); 
+      
+      const tId = Date.now(); addToast(tId, "กำลังบันทึกตั้งค่า", "syncing");
+      try {
+        await fetchWithTimeout(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'saveLifespan', 'ชื่อสินค้า':state.detailItem, 'อายุการใช้งาน':ls, 'แจ้งเตือนขั้นต่ำ':ms})});
+        addToast(tId, "บันทึกตั้งค่าสำเร็จ", "success");
+      } catch(e) { addToast(tId, "ล้มเหลว", "error"); }
+      btn.innerText="บันทึกการตั้งค่า"; btn.disabled=false;
+    }
+
+    function openGlobalRename() {
+      getEl('detail-header-normal').classList.add('hidden');
+      getEl('detail-header-rename').classList.remove('hidden');
+      getEl('rename-name').value = state.detailItem;
+      
+      const partsContainer = getEl('rename-parts-container');
+      const codes = Array.from(state.inventory[state.detailItem]?.partsCodes || []).filter(Boolean);
+      
+      if (codes.length === 0) {
+         partsContainer.innerHTML = `
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+               <label class="text-sm font-bold text-gray-700 sm:w-20">พาร์ทอะไหล่:</label>
+               <input type="text" class="rename-part-input p-2 border rounded text-sm flex-1 w-full" data-old="" placeholder="เพิ่มรหัสอะไหล่ใหม่" />
+            </div>`;
+      } else {
+         partsContainer.innerHTML = codes.map((code, idx) => `
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+               <label class="text-sm font-bold text-gray-700 sm:w-20">พาร์ท ${idx + 1}:</label>
+               <input type="text" class="rename-part-input p-2 border rounded text-sm flex-1 w-full" data-old="${code.replace(/"/g, '&quot;')}" value="${code.replace(/"/g, '&quot;')}" />
+            </div>
+         `).join('');
+      }
+    }
+    
+    function closeGlobalRename() {
+      getEl('detail-header-rename').classList.add('hidden');
+      getEl('detail-header-normal').classList.remove('hidden');
+    }
+    
+    async function executeGlobalRename() {
+      const nName = getEl('rename-name').value.trim();
+      if(!nName) return showAlert("กรุณาระบุชื่อสินค้า", "error");
+      
+      const partInputs = document.querySelectorAll('.rename-part-input');
+      const partsMapping = {};
+      partInputs.forEach(input => {
+          const oldP = input.getAttribute('data-old');
+          const newP = input.value.trim();
+          if (oldP || newP) partsMapping[oldP] = newP;
+      });
+      
+      getEl('btn-rename-save').innerText="รอ..."; getEl('btn-rename-save').disabled=true;
+      const tId = Date.now(); addToast(tId, "เปลี่ยนชื่อ/พาร์ททั้งระบบ", "syncing");
+      
+      const old = state.detailItem;
+      
+      state.transactions = state.transactions.map(t => {
+        if ((t['ชื่อสินค้า']||'').trim() === old) {
+            let updated = {...t, 'ชื่อสินค้า': nName};
+            const oldPart = (t['รหัสอะไหล่']||'').trim();
+            if (partsMapping[oldPart] !== undefined) {
+                updated['รหัสอะไหล่'] = partsMapping[oldPart];
+            }
+            return updated;
+        }
+        return t;
+      });
+      
+      if(state.itemSettings[old]) { 
+          state.itemSettings[nName] = state.itemSettings[old]; 
+          if(old !== nName) delete state.itemSettings[old]; 
+      }
+      
+      state.detailItem = nName;
+      computeDerivedState();
+      openDetail(nName);
+
+      try {
+        await fetchWithTimeout(WEB_APP_URL, {
+            method:'POST', 
+            body:JSON.stringify({action:'globalRename', oldName:old, newName:nName, partsMapping: partsMapping})
+        });
+        addToast(tId, "เปลี่ยนข้อมูลสำเร็จ", "success");
+      } catch(e) { addToast(tId, "ล้มเหลว", "error"); }
+      
+      getEl('btn-rename-save').innerText="บันทึกการเปลี่ยนแปลง"; getEl('btn-rename-save').disabled=false;
+    }
+
+    function openEdit(rowIndex) {
+      const tx = state.transactions.find(t => t._rowIndex === rowIndex);
+      if(!tx) return;
+      state.editingTx = tx;
+      getEl('edit-date').value = tx['วันที่'];
+      getEl('edit-qty').value = tx['จำนวน'];
+      
+      if(tx['ประเภทรายการ']==='รับเข้า') {
+        getEl('edit-wrap-parts').innerHTML = `<label class="block text-xs font-bold text-gray-700 mb-1">รหัสอะไหล่</label><input type="text" id="edit-parts" value="${tx['รหัสอะไหล่']||''}" class="w-full p-2 border focus:ring-blue-500 rounded text-sm"/>`;
+        getEl('edit-wrap-product').innerHTML = `<label class="block text-xs font-bold text-gray-700 mb-1">ชื่อสินค้า</label><input type="text" id="edit-product" value="${tx['ชื่อสินค้า']}" class="w-full p-2 border focus:ring-blue-500 rounded text-sm"/>`;
+        getEl('edit-wrap-extra').innerHTML = `
+          <div><label class="block text-xs font-bold text-gray-700 mb-1">ราคารวม</label><input type="number" id="edit-price" value="${tx['ราคารวม']||''}" class="w-full p-2 border rounded text-sm"/></div>
+          <div><label class="block text-xs font-bold text-gray-700 mb-1">ร้านค้า</label><input type="text" id="edit-shop" value="${tx['ชื่อร้านค้า']||''}" class="w-full p-2 border rounded text-sm"/></div>`;
+      } else {
+        getEl('edit-wrap-parts').innerHTML = `<label class="block text-xs font-bold text-gray-400 mb-1">รหัสอะไหล่ (ล็อก)</label><input type="text" value="${tx['รหัสอะไหล่']||''}" disabled class="w-full p-2 border rounded text-sm bg-gray-100 text-gray-500 cursor-not-allowed"/>`;
+        getEl('edit-wrap-product').innerHTML = `<label class="block text-xs font-bold text-gray-400 mb-1">ชื่อสินค้า (ล็อก)</label><input type="text" value="${tx['ชื่อสินค้า']}" disabled class="w-full p-2 border rounded text-sm bg-gray-100 text-gray-500 cursor-not-allowed"/>`;
+        getEl('edit-wrap-extra').innerHTML = `<div class="col-span-2"><label class="block text-xs font-bold text-gray-700 mb-1">รหัสรถ/หน่วยงาน</label><input type="text" id="edit-veh" value="${tx['รหัสรถ']||''}" class="w-full p-2 border rounded text-sm"/></div>`;
+      }
+      openModal('modal-edit');
+    }
+
+    async function executeEdit() {
+      const tx = state.editingTx;
+      const nData = {...tx, 'วันที่':getEl('edit-date').value, 'จำนวน':parseFloat(getEl('edit-qty').value)};
+      if(tx['ประเภทรายการ']==='รับเข้า') {
+        nData['รหัสอะไหล่'] = getEl('edit-parts').value; nData['ชื่อสินค้า'] = getEl('edit-product').value;
+        nData['ราคารวม'] = getEl('edit-price').value; nData['ชื่อร้านค้า'] = getEl('edit-shop').value;
+      } else {
+        nData['รหัสรถ'] = getEl('edit-veh').value;
+      }
+      
+      const btn = getEl('btn-edit-save'); btn.disabled=true; btn.innerText="รอ...";
+      state.transactions = state.transactions.map(t => t._rowIndex===tx._rowIndex ? nData : t);
+      computeDerivedState();
+      closeModal('modal-edit');
+      
+      const tId = Date.now(); addToast(tId, "กำลังแก้ไข...", "syncing");
+      try {
+        await fetchWithTimeout(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'editTransaction', oldData:tx, newData:nData})});
+        addToast(tId, "แก้ไขสำเร็จ", "success");
+      } catch(e) { addToast(tId, "ล้มเหลว", "error"); }
+      btn.disabled=false; btn.innerText="บันทึกการแก้ไข";
+    }
+
+    function cmdDelete(rowIndex) {
+      const tx = state.transactions.find(t => t._rowIndex === rowIndex);
+      if(!tx) return;
+      showConfirm(`ยืนยันลบ ${tx['ชื่อสินค้า']} จำนวน ${tx['จำนวน']}?`, async () => {
+        state.transactions = state.transactions.filter(t => t._rowIndex !== tx._rowIndex);
+        computeDerivedState();
+        const tId = Date.now(); addToast(tId, "ลบข้อมูล...", "syncing");
+        try {
+          await fetchWithTimeout(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'deleteTransaction', oldData:tx})});
+          addToast(tId, "ลบสำเร็จ", "success");
+        } catch(e) { addToast(tId, "ลบไม่สำเร็จบนคลาวด์", "error"); }
+      });
+    }
+
+    function showAlertDetail(idx) {
+      const tx = state.alertData[idx];
+      const txVeh = (tx['รหัสรถ'] || tx['รหัสรถที่เบิก'] || '').trim();
+      
+      const past = state.transactions.filter(t => {
+        const tVeh = (t['รหัสรถ'] || t['รหัสรถที่เบิก'] || '').trim();
+        return t['ประเภทรายการ']==='เบิกออก' && 
+               (t['ชื่อสินค้า']||'').trim()===(tx['ชื่อสินค้า']||'').trim() && 
+               tVeh === txVeh;
+      }).sort((a,b) => {
+        const dDiff = new Date(b['วันที่']) - new Date(a['วันที่']);
+        if (dDiff !== 0) return dDiff;
+        return (b._rowIndex || 0) - (a._rowIndex || 0); 
+      });
+      
+      const currentIndex = past.findIndex(t => t._rowIndex === tx._rowIndex);
+      const pTx = currentIndex !== -1 && currentIndex + 1 < past.length ? past[currentIndex + 1] : null;
+      
+      const c = getEl('alert-detail-content');
+      if(pTx) {
+        const diffDays = ((new Date(tx['วันที่']) - new Date(pTx['วันที่']))/86400000);
+        let timeText = diffDays < 30 ? `${Math.floor(diffDays)} วัน` : `${(diffDays/30.44).toFixed(1)} เดือน`;
+        c.innerHTML = `<p>รหัสรถ/หน่วยงาน: <b>${txVeh}</b></p><p>เบิกก่อนหน้า: ${pTx['วันที่']}</p><p>เบิกครั้งนี้: ${tx['วันที่']}</p><p class="text-red-500 font-bold">ผ่านไปเพียง ${timeText} (เป้าหมาย ${state.itemSettings[tx['ชื่อสินค้า'].trim()]?.lifespan} ด.)</p>`;
+      } else {
+        c.innerHTML = "<p>ไม่พบประวัติอ้างอิง (อาจเป็นรายการเบิกครั้งแรก หรือข้อมูลอ้างอิงถูกลบไปแล้ว)</p>";
+      }
+      
+      openModal('modal-alert-detail');
+    }
+
+    function openPrompt(idx) {
+      state.promptTx = state.alertData[idx];
+      getEl('prompt-reason').value = ''; getEl('prompt-checker').value = '';
+      openModal('modal-prompt');
+    }
+
+    async function executePrompt() {
+      const chk = getEl('prompt-checker').value.trim();
+      const rsn = getEl('prompt-reason').value.trim();
+      if(!chk) return showAlert("กรุณาลงชื่อผู้ตรวจสอบ", "error");
+      
+      const tx = state.promptTx;
+      getEl('btn-prompt-save').innerText="รอ..."; getEl('btn-prompt-save').disabled=true;
+      
+      state.transactions = state.transactions.map(t => {
+        if(t._rowIndex === tx._rowIndex) return {...t, 'สถานะการเตือน':'ตรวจสอบแล้ว', 'เหตุผล':rsn||'-', 'ตรวจสอบโดย':chk};
+        return t;
+      });
+      computeDerivedState();
+      closeModal('modal-prompt');
+      
+      const tId = Date.now(); addToast(tId, "ล้างแจ้งเตือน...", "syncing");
+      try {
+        await fetchWithTimeout(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'clearAlert', _rowIndex:tx._rowIndex, 'สถานะใหม่':'ตรวจสอบแล้ว', 'เหตุผล':rsn||'-', 'ตรวจสอบโดย':chk, 'วันที่':tx['วันที่'], 'รหัสรถ':tx['รหัสรถ'], 'ชื่อสินค้า':tx['ชื่อสินค้า'], 'จำนวน':tx['จำนวน']})});
+        addToast(tId, "ล้างสำเร็จ", "success");
+      } catch(e) { addToast(tId, "คลาวด์ล้มเหลว", "error"); }
+      getEl('btn-prompt-save').innerText="บันทึก"; getEl('btn-prompt-save').disabled=false;
+    }
+
+    function openScanner(origin) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+         showAlert("เบราว์เซอร์ของคุณไม่รองรับการใช้งานกล้อง หรือไม่ได้เปิดเว็บผ่าน HTTPS / Localhost", "error");
+         return;
+      }
+      
+      state.scannerOrigin = origin;
+      getEl('modal-scanner').classList.remove('hidden');
+
+      setTimeout(() => {
+        try { if (state.html5QrcodeScanner) state.html5QrcodeScanner.clear(); } catch(e){}
+
+        state.html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
+        
+        state.html5QrcodeScanner.render((txt) => {
+          if(state.scannerOrigin === 'summary') {
+             getEl('summary-search').value = txt;
+             renderSummary();
+             closeScanner();
+             showAlert(`ค้นหา: ${txt}`, 'success');
+          } else {
+             getEl(`${state.scannerOrigin}-parts`).value = txt;
+             handlePartsChange(state.scannerOrigin);
+             closeScanner();
+             showAlert(`สแกนสำเร็จ: ${txt}`, 'success');
+          }
+        }, (err) => {});
+      }, 150);
+    }
+    
+    function closeScanner() {
+      if (state.html5QrcodeScanner) {
+        state.html5QrcodeScanner.clear().then(() => {
+          getEl('modal-scanner').classList.add('hidden');
+          getEl('reader').innerHTML = ''; 
+          state.html5QrcodeScanner = null;
+        }).catch(err => {
+          getEl('modal-scanner').classList.add('hidden');
+          state.html5QrcodeScanner = null;
+        });
+      } else {
+        getEl('modal-scanner').classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
